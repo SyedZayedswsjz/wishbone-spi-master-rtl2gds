@@ -1,0 +1,20 @@
+--- orig/spi_clgen.v	2026-10-15 11:58:24.752439370 +0000
++++ fixed/spi_clgen.v	2026-10-15 11:59:55.703169870 +0000
+@@ -39,9 +39,15 @@
+ //////////////////////////////////////////////////
+ always @(posedge clk_in or posedge rst) begin
+     if (rst)
+-        clk_out <= 0;
++        clk_out <= 1'b0;
+ 
+-    else if (enable && cnt_zero)
++    // Return SCLK to idle-low (CPOL=0) between transfers. An 8-bit
++    // transfer ends after 15 toggles, so without this SCLK was left
++    // HIGH and the next transfer started with a falling edge.
++    else if (!enable)
++        clk_out <= 1'b0;
++
++    else if (cnt_zero)
+         clk_out <= ~clk_out;
+ end
+ 

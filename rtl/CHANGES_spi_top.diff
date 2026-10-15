@@ -1,0 +1,11 @@
+--- orig/spi_top.v	2026-10-15 11:58:24.758535260 +0000
++++ fixed/spi_top.v	2026-10-15 11:59:34.788783915 +0000
+@@ -48,7 +48,7 @@
+     if (wb_rst_i)
+         wb_ack_o <= 0;
+     else
+-        wb_ack_o <= wb_cyc_i & wb_stb_i;
++        wb_ack_o <= wb_cyc_i & wb_stb_i & ~wb_ack_o;   // single-cycle ack pulse
+ end
+ 
+ assign wb_err_o = 1'b0;

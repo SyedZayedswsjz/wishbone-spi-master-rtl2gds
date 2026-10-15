@@ -1,0 +1,95 @@
+--- orig/spi_shift.v	2026-10-15 11:58:24.756780705 +0000
++++ fixed/spi_shift.v	2026-10-15 11:59:34.788617944 +0000
+@@ -2,7 +2,7 @@
+ `include "spi_defines.v"
+ 
+ // =============================================================================
+-// spi_shift.v  —  Fixed version
++// spi_shift.v  —  Fixed version (rev 2: phantom-transfer + multi-driver fixes)
+ //
+ // BUG FIXED (Phantom Transfer):
+ //   In the original design, when a transfer completes (tip falls on
+@@ -66,37 +66,46 @@
+ assign last = (bit_cnt == 1);
+ 
+ // ------------------------------------------------------------------
+-// go_r latch: set when go rises with tip=0; clear when tip falls
++// go_r: "this GO has already been serviced" flag.
++//   Set when a transfer starts; cleared only when spi_top clears GO.
++//   spi_top clears GO one clock AFTER tip falls, so without this flag
++//   go=1 && tip=0 in that cycle restarts a phantom transfer.
+ // ------------------------------------------------------------------
++wire start = go && !tip && !go_r;
++
+ always @(posedge clk or posedge rst) begin
+     if (rst)
+-        go_r <= 0;
+-    else if (go && !tip)
+-        go_r <= 1;
+-    else if (tip && last && sample_edge)
+-        go_r <= 0;
++        go_r <= 1'b0;
++    else if (!go)
++        go_r <= 1'b0;
++    else if (start)
++        go_r <= 1'b1;
+ end
+ 
+ // ------------------------------------------------------------------
+-// tip: use go_r to stay high for the full transfer
++// tip: transfer in progress
+ // ------------------------------------------------------------------
+ always @(posedge clk or posedge rst) begin
+     if (rst)
+-        tip <= 0;
+-    else if (go && !tip)
+-        tip <= 1;
++        tip <= 1'b0;
++    else if (start)
++        tip <= 1'b1;
+     else if (tip && last && sample_edge)
+-        tip <= 0;
++        tip <= 1'b0;
+ end
+ 
+ // ------------------------------------------------------------------
+-// TX shift register: latch parallel data when not in transfer
++// TX shift register: load when idle, shift on shift_edge during tip.
++// (Single always block: tx_shift was previously driven from two
++//  always blocks, which is a multi-driver error in synthesis.)
+ // ------------------------------------------------------------------
+ always @(posedge clk or posedge rst) begin
+     if (rst)
+-        tx_shift <= 0;
++        tx_shift <= 8'd0;
+     else if (latch[0] && !tip)
+         tx_shift <= p_in[7:0];
++    else if (tip && shift_edge)
++        tx_shift <= {tx_shift[6:0], 1'b0};
+ end
+ 
+ // ------------------------------------------------------------------
+@@ -105,8 +114,8 @@
+ always @(posedge clk or posedge rst) begin
+     if (rst)
+         bit_cnt <= 0;
+-    else if (go && !tip)
+-        bit_cnt <= 8;
++    else if (start)
++        bit_cnt <= 4'd8;
+     else if (tip && sample_edge)
+         bit_cnt <= bit_cnt - 1;
+ end
+@@ -117,10 +126,8 @@
+ always @(posedge clk or posedge rst) begin
+     if (rst)
+         mosi <= 0;
+-    else if (tip && shift_edge) begin
+-        mosi     <= tx_shift[7];
+-        tx_shift <= {tx_shift[6:0], 1'b0};
+-    end
++    else if (tip && shift_edge)
++        mosi <= tx_shift[7];
+ end
+ 
+ // ------------------------------------------------------------------
